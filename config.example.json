@@ -1,0 +1,7 @@
+{
+  "ZEEKR_TOKEN": "Bearer eyJhbGciOi...",
+  "DEVICE_ID": "",
+  "BARK_KEY": "你的Bark设备Key",
+  "BARK_SERVER": "https://api.day.app",
+  "BARK_GROUP": "极氪"
+}

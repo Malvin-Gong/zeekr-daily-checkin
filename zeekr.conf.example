@@ -1,0 +1,17 @@
+# ========================================================
+# 极氪 App 每日日常任务与权益引擎 配置文件模板
+# ========================================================
+
+# 1. 极氪授权凭证 (抓包获得的完整 Token，必须保留 Bearer 前缀)
+ZEEKR_TOKEN="Bearer eyJhbGciOi..."
+
+# 2. 设备标识 (可选，留空时脚本将自动基于 Token 生成合法唯一的虚拟设备指纹)
+DEVICE_ID=""
+
+# 3. iOS Bark 实时推送 (打开 Bark App 首页复制唯一的 key，留空则不推送)
+BARK_KEY=""
+BARK_SERVER="https://api.day.app"
+BARK_GROUP="极氪"
+
+# 4. 日志存储路径 (OpenWrt 推荐使用 tmpfs 内存虚拟路径，零闪存 Flash 磨损)
+LOG_FILE="/var/log/zeekr_checkin.log"

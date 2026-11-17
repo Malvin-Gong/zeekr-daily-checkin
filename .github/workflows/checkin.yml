@@ -1,0 +1,28 @@
+name: 极氪每日日常任务
+
+on:
+  schedule:
+    # UTC 23:30 = 北京时间 07:30 (早间候选窗口)
+    # UTC 04:00 = 北京时间 12:00 (午间候选窗口)
+    # UTC 11:30 = 北京时间 19:30 (晚间候选窗口)
+    - cron: '30 23,4,11 * * *'
+  workflow_dispatch: # 支持在 GitHub 网页上手动点击运行测试
+
+jobs:
+  zeekr-task:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 执行极氪签到与任务
+        env:
+          ZEEKR_TOKEN: ${{ secrets.ZEEKR_TOKEN }}
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+        run: |
+          python src/checkin.py --gha
