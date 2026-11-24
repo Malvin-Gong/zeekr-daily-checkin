@@ -35,6 +35,9 @@ jobs:
         env:
           ZEEKR_TOKEN: ${{ secrets.ZEEKR_TOKEN }}
           BARK_KEY: ${{ secrets.BARK_KEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
         run: |
           set -o pipefail
           python src/checkin.py --gha 2>&1 | tee checkin.log

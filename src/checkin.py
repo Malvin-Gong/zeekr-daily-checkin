@@ -79,7 +79,8 @@ def load_config():
                     pass
 
     # 2. 环境变量具有最高优先级 (覆盖本地配置，适应 GitHub Actions / Docker)
-    for env_key in ["ZEEKR_TOKEN", "BARK_KEY", "BARK_SERVER", "BARK_GROUP", "DEVICE_ID", "LOG_FILE"]:
+    for env_key in ["ZEEKR_TOKEN", "BARK_KEY", "BARK_SERVER", "BARK_GROUP", "DEVICE_ID", "LOG_FILE",
+                    "PUSHPLUS_TOKEN", "SERVERCHAN_KEY", "WECOM_WEBHOOK"]:
         if os.environ.get(env_key):
             conf[env_key] = os.environ[env_key]
 
@@ -166,30 +167,82 @@ def api_call(conf, token, path, method="POST", payload=None):
     except Exception as e:
         return {"code": "ERROR", "msg": str(e)}
 
-def send_bark(conf, title, body, avatar_url=""):
-    device_key = conf.get("BARK_KEY", "").strip()
-    if not device_key:
-        return
-    url = conf.get("BARK_SERVER", "https://api.day.app").rstrip("/") + "/push"
-    payload = {
-        "device_key": device_key,
-        "title": title,
-        "body": body,
-        "group": conf.get("BARK_GROUP", "极氪"),
-        "icon": avatar_url or conf.get("BARK_ICON", DEFAULT_AVATAR),
-        "ttl": 600
-    }
-    data = json.dumps(payload).encode("utf-8")
+def _post_json(url, payload, timeout=10):
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+def send_notify(conf, title, body, avatar_url=""):
+    """多通道推送：Bark / PushPlus / Server 酱 / 企业微信机器人，配了哪个就走哪个，全都没配则静默跳过"""
+    used = []
+
+    bark_key = conf.get("BARK_KEY", "").strip()
+    if bark_key:
+        used.append("Bark")
+        try:
+            url = conf.get("BARK_SERVER", "https://api.day.app").rstrip("/") + "/push"
+            res = _post_json(url, {
+                "device_key": bark_key,
+                "title": title,
+                "body": body,
+                "group": conf.get("BARK_GROUP", "极氪"),
+                "icon": avatar_url or conf.get("BARK_ICON", DEFAULT_AVATAR),
+                "ttl": 600,
+            })
             if res.get("code") == 200:
-                print("  📲 已通过 Bark 发送推送通知")
+                print("  📲 Bark 推送成功")
             else:
-                print(f"  ⚠️ Bark 推送返回: {res}")
-    except Exception as e:
-        print(f"  ❌ Bark 推送失败: {e}")
+                print(f"  ⚠️ Bark 返回: {res}")
+        except Exception as e:
+            print(f"  ❌ Bark 推送失败: {e}")
+
+    pp_token = conf.get("PUSHPLUS_TOKEN", "").strip()
+    if pp_token:
+        used.append("PushPlus")
+        try:
+            res = _post_json("https://www.pushplus.plus/send", {
+                "token": pp_token,
+                "title": title,
+                "content": body.replace("\n", "\n\n"),
+                "template": "markdown",
+            })
+            if res.get("code") == 200:
+                print("  💬 PushPlus 推送成功（微信）")
+            else:
+                print(f"  ⚠️ PushPlus 返回: {res}")
+        except Exception as e:
+            print(f"  ❌ PushPlus 推送失败: {e}")
+
+    sc_key = conf.get("SERVERCHAN_KEY", "").strip()
+    if sc_key:
+        used.append("Server酱")
+        try:
+            res = _post_json(f"https://sctapi.ftqq.com/{sc_key}.send", {"title": title, "desp": body})
+            if res.get("code") in (0, "0"):
+                print("  💬 Server 酱推送成功（微信）")
+            else:
+                print(f"  ⚠️ Server 酱返回: {res}")
+        except Exception as e:
+            print(f"  ❌ Server 酱推送失败: {e}")
+
+    wecom = conf.get("WECOM_WEBHOOK", "").strip()
+    if wecom:
+        used.append("企业微信")
+        try:
+            res = _post_json(wecom, {
+                "msgtype": "markdown",
+                "markdown": {"content": f"**{title}**\n" + body},
+            })
+            if res.get("errcode") == 0:
+                print("  💬 企业微信推送成功")
+            else:
+                print(f"  ⚠️ 企业微信返回: {res}")
+        except Exception as e:
+            print(f"  ❌ 企业微信推送失败: {e}")
+
+    if not used:
+        print("  ℹ️ 未配置任何推送渠道，跳过通知")
 
 def run_checkin_tasks(conf, slot_desc="即时触发"):
     start_time = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -233,7 +286,7 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
         if center_res.get("code") == "AUTH_ERROR":
             err_msg = "⚠️ Token 已失效，请重新抓包更新!"
             bark_lines.append(err_msg)
-            send_bark(conf, "🚨 极氪签到失败: Token 已失效", "\n".join(bark_lines), avatar)
+            send_notify(conf, "🚨 极氪签到失败: Token 已失效", "\n".join(bark_lines), avatar)
             sys.exit(1)
 
     time.sleep(random.uniform(2.0, 3.5))
@@ -371,7 +424,7 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
 
     # 4. 发送 Bark 推送通知
     print("[4/4] 任务总结与推送...")
-    send_bark(conf, "🚗 极氪日常任务已完成", "\n".join(bark_lines), avatar)
+    send_notify(conf, "🚗 极氪日常任务已完成", "\n".join(bark_lines), avatar)
 
     # 更新本地状态
     today = time.strftime("%Y-%m-%d")
