@@ -301,11 +301,27 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
             if val_type == "DEBRIS" or it.get("eventCode") == "medal_compose_easy_draw":
                 debris_list.append(it)
             elif val_type == "CARBON_VALUE":
-                r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectedAllEnergy", "POST", {"accountId": account_id})
-                if r.get("code") == "000000":
+                # 该接口对参数校验较严，按候选参数顺序探测，第一个返回 000000 的即为有效组合
+                r = None
+                tried = []
+                variants = [
+                    {"accountId": account_id},
+                    {"accountId": int(account_id) if str(account_id).isdigit() else account_id},
+                    {"accountId": str(account_id), "energyType": "STEP"},
+                    {"accountId": str(account_id), "valType": "CARBON_VALUE"},
+                    {"accountId": str(account_id), "energyType": "CARBON_VALUE"},
+                ]
+                for v in variants:
+                    r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectedAllEnergy", "POST", v)
+                    tried.append(f"{json.dumps(v, ensure_ascii=False)} => {r.get('code')} {r.get('msg')}")
+                    if r.get("code") == "000000":
+                        break
+                if r and r.get("code") == "000000":
                     claimed_items.append("步行碳积分")
                 else:
-                    print(f"  ⚠️ 步行碳积分领取失败: {r.get('code')} {r.get('msg')}")
+                    print(f"  ⚠️ 步行碳积分领取失败: 候选参数均未通过校验")
+                    for t in tried:
+                        print(f"    · {t}")
             elif val_type == "ZEEKR_VALUE":
                 r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectIntegralZeekrBalls", "POST", {"accountId": account_id})
                 if r.get("code") == "000000":
@@ -340,7 +356,8 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
             print(f"  ✅ 领取完成: {claimed_str}")
             bark_lines.append(f"🎁 领取权益: {claimed_str}")
         elif items:
-            print(f"  ⚠️ 仍有 {len(items)} 项待领权益未领取成功，见上方未识别类型")
+            print(f"  ⚠️ 仍有 {len(items)} 项待领权益未领取成功，见上方诊断")
+            print(f"::warning::仍有 {len(items)} 项待领权益未领取成功")
             bark_lines.append(f"🎁 领取权益: {len(items)} 项待领未成功")
         else:
             print("  ℹ️ 暂无待领取的碎片或能量球")
