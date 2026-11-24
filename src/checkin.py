@@ -295,6 +295,7 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
 
         claimed_items = []
         debris_list = []
+        other_list = []
         for it in items:
             val_type = it.get("valDefineCode")
             if val_type == "DEBRIS" or it.get("eventCode") == "medal_compose_easy_draw":
@@ -303,17 +304,27 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
                 r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectedAllEnergy", "POST", {"accountId": account_id})
                 if r.get("code") == "000000":
                     claimed_items.append("步行碳积分")
+                else:
+                    print(f"  ⚠️ 步行碳积分领取失败: {r.get('code')} {r.get('msg')}")
             elif val_type == "ZEEKR_VALUE":
                 r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectIntegralZeekrBalls", "POST", {"accountId": account_id})
                 if r.get("code") == "000000":
                     claimed_items.append("极值能量球")
+                else:
+                    print(f"  ⚠️ 极值能量球领取失败: {r.get('code')} {r.get('msg')}")
+            else:
+                # 兜底：未知 valDefineCode 也尝试走 batchApply，并打印结构便于后续排查
+                print(f"  ℹ️ 未识别权益 valDefineCode={val_type} eventCode={it.get('eventCode')} id={it.get('id')}")
+                print(f"  ℹ️ 原始数据: {json.dumps(it, ensure_ascii=False)[:500]}")
+                other_list.append(it)
 
-        if debris_list:
+        apply_targets = debris_list + other_list
+        if apply_targets:
             apply_cmds = [{
                 "record": d.get("eventCode", "medal_compose_easy_draw"),
                 "payContent": {"bubbleAssetsId": str(d.get("id"))},
                 "applyExt": {"origin": d.get("sourceId", "阅读文章")}
-            } for d in debris_list]
+            } for d in apply_targets]
             r = api_call(conf, token, "/zeekrlife-mp-mkt/toc/v1/apply/batchApply", "POST", {"applyCmdList": apply_cmds})
             if r.get("code") == "000000":
                 res_list = r.get("data") or []
@@ -321,11 +332,16 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
                     mat_name = res_item.get("invoice", {}).get("materialSnapshot", {}).get("name", "碎片")
                     claimed_items.append(f"碎片 ({mat_name})")
                     print(f"  🎉 成功领取: {mat_name}")
+            else:
+                print(f"  ⚠️ batchApply 返回: {r.get('code')} {r.get('msg')}")
 
         if claimed_items:
             claimed_str = ", ".join(claimed_items)
             print(f"  ✅ 领取完成: {claimed_str}")
             bark_lines.append(f"🎁 领取权益: {claimed_str}")
+        elif items:
+            print(f"  ⚠️ 仍有 {len(items)} 项待领权益未领取成功，见上方未识别类型")
+            bark_lines.append(f"🎁 领取权益: {len(items)} 项待领未成功")
         else:
             print("  ℹ️ 暂无待领取的碎片或能量球")
             bark_lines.append("🎁 领取权益: 暂无待领球/碎片")

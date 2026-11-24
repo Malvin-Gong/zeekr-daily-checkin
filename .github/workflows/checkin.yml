@@ -8,9 +8,17 @@ on:
     - cron: '30 23,4,11 * * *'
   workflow_dispatch: # 支持在 GitHub 网页上手动点击运行测试
 
+permissions:
+  contents: read
+
+concurrency:
+  group: zeekr-checkin
+  cancel-in-progress: false
+
 jobs:
   zeekr-task:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
@@ -20,9 +28,39 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: 语法自检
+        run: python -m py_compile src/checkin.py
+
       - name: 执行极氪签到与任务
         env:
           ZEEKR_TOKEN: ${{ secrets.ZEEKR_TOKEN }}
           BARK_KEY: ${{ secrets.BARK_KEY }}
         run: |
-          python src/checkin.py --gha
+          set -o pipefail
+          python src/checkin.py --gha 2>&1 | tee checkin.log
+
+      - name: 结果校验与摘要
+        if: always()
+        run: |
+          {
+            echo "## 极氪日常任务结果"
+            echo ""
+            echo '```'
+            grep -vE "^\s*$" checkin.log 2>/dev/null || echo "(空日志)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if grep -qE "AUTH_ERROR|\[ERROR\]|[❌]" checkin.log 2>/dev/null; then
+            echo "::error::日志中存在失败项，详见本次运行的 Step Summary"
+            exit 1
+          fi
+          echo "✅ 日志中未发现失败项"
+
+      - name: 上传日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkin-log-${{ github.run_number }}
+          path: checkin.log
+          retention-days: 14
+          if-no-files-found: warn
