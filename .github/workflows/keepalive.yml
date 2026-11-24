@@ -1,0 +1,36 @@
+name: Keepalive
+
+# 目的：GitHub 会禁用 60 天无提交仓库的 schedule 定时任务。
+# 本 workflow 每月向仓库提交一次时间戳，使仓库保持活跃，checkin 的定时永不静默停摆。
+
+on:
+  schedule:
+    # UTC 00:40 每月 1 日 = 北京时间 08:40
+    - cron: '40 0 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 写入时间戳并提交
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          git commit -m "chore: keepalive $(date -u +%Y-%m)"
+          git push
