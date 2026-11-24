@@ -319,9 +319,10 @@ def run_checkin_tasks(conf, slot_desc="即时触发"):
                 if r and r.get("code") == "000000":
                     claimed_items.append("步行碳积分")
                 else:
-                    print(f"  ⚠️ 步行碳积分领取失败: 候选参数均未通过校验")
+                    print(f"  ⚠️ 步行碳积分领取失败: 候选参数均未通过校验，转交 batchApply 兜底")
                     for t in tried:
                         print(f"    · {t}")
+                    other_list.append(it)
             elif val_type == "ZEEKR_VALUE":
                 r = api_call(conf, token, "/zeekrlife-mp-val/v1/carEnergy/collectIntegralZeekrBalls", "POST", {"accountId": account_id})
                 if r.get("code") == "000000":
